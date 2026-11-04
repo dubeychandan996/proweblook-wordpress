@@ -1,0 +1,8 @@
+.git
+.gitignore
+.distignore
+README.md
+LICENSE
+tests
+svn-assets
+.DS_Store

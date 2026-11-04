@@ -1,0 +1,124 @@
+(function ($) {
+	'use strict';
+
+	var app = {
+		el: '',
+		msgContainer: false,
+		validPhones: [],
+
+		submit: function () {
+			$(this.el).trigger('submit');
+		},
+
+		request: function (phone) {
+			if ($('body').hasClass('propp-loading')) {
+				return;
+			}
+			var self = this;
+			$('body').addClass('propp-loading');
+
+			var inputs = $(self.el).find('.propp-phone');
+			_.each(inputs, function (el) {
+				if ($(el).val() === phone) {
+					$(el).addClass('propp-loading-phone');
+				}
+			});
+
+			if (phone.length > 1) {
+				$.ajax({
+					url: propp.AJAX_URL,
+					type: 'POST',
+					cache: false,
+					data: {
+						'action': 'bppy-verify-phone',
+						'prop-nonce': propp.nonce,
+						'number': phone
+					},
+					dataType: 'json',
+					success: function (data) {
+						$('body').removeClass('propp-loading');
+						_.each($(self.el).find('.propp-phone'), function (el) {
+							if ($(el).val() === phone) {
+								$(el).removeClass('propp-loading-phone');
+							}
+						});
+
+						if (data && data.is_valid !== false) {
+							self.validPhones.push(phone);
+							self.submit();
+						} else {
+							var label = (data && data.message) ? data.message : ((data && propp[data.status]) ? propp[data.status] : propp.INVALID);
+							self.showError(phone, label);
+						}
+					},
+					error: function () {
+						$('body').removeClass('propp-loading');
+						self.validPhones.push(phone);
+						self.submit();
+					}
+				});
+			} else {
+				$('body').removeClass('propp-loading');
+				self.showError(phone, propp.UNKNOWN || 'Invalid phone number');
+			}
+		},
+
+		validateForm: function (form) {
+			var self = this;
+			var inputs = $(form).find('.propp-phone');
+			var phones = [];
+
+			self.el = form;
+			self.msgContainer = $(self.el).find('.wpcf7-response-output').length
+				? $(self.el).find('.wpcf7-response-output')
+				: false;
+
+			_.each(inputs, function (el, key) {
+				phones.push($(inputs[key]).val());
+			});
+
+			var remaining = _.difference(phones, app.validPhones);
+			if (_.isEmpty(remaining)) {
+				self.submit();
+			} else {
+				self.request(remaining[0]);
+			}
+		},
+
+		showError: function (phone, statusText) {
+			var self = this;
+			var template = _.template(propp.tpl);
+			if (self.msgContainer) {
+				$(self.msgContainer).html(template({ phone: phone, status: statusText })).show();
+			} else {
+				_.each($(self.el).find('.propp-phone'), function (el) {
+					if ($(el).val() === phone) {
+						$(el).after(template({ phone: '', status: statusText }));
+					}
+				});
+			}
+		}
+	};
+
+	$(function () {
+		_.each($('form'), function (form) {
+			if ($(form).find('.propp-phone').length) {
+				$(form).on('submit', function () {
+					var inputs = $(form).find('.propp-phone');
+					var phones = [];
+
+					$(form).find('.propp-error').remove();
+					_.each(inputs, function (el, key) {
+						phones.push($(inputs[key]).val());
+					});
+
+					if (_.isEmpty(_.difference(phones, app.validPhones))) {
+						return true;
+					}
+					app.validateForm($(form));
+					return false;
+				});
+			}
+		});
+	});
+}(jQuery));

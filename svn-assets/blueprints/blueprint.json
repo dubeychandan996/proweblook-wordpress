@@ -1,0 +1,30 @@
+{
+    "landingPage": "/wp-admin/options-general.php?page=Proweblook_phone_validator",
+    "preferredVersions": {
+        "php": "8.2",
+        "wp": "latest"
+    },
+    "phpExtensionBundles": [
+        "kitchen-sink"
+    ],
+    "features": {
+        "networking": true
+    },
+    "steps": [
+        {
+            "step": "login",
+            "username": "admin",
+            "password": "password"
+        },
+        {
+            "step": "installPlugin",
+            "pluginData": {
+                "resource": "wordpress.org/plugins",
+                "slug": "proweblook-phone-validator"
+            },
+            "options": {
+                "activate": true
+            }
+        }
+    ]
+}
