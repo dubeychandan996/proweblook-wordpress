@@ -107,6 +107,8 @@ class PROP_Plugin {
 		$this->validator->set_api( $this->api );
 		$this->validator->set_block_voip( 1 === (int) $this->get_option( 'propp_block_voip' ) );
 		$this->validator->set_block_disposable_email( 1 === (int) $this->get_option( 'propp_block_disposable' ) );
+		$this->validator->set_check_dnsbl( 1 === (int) $this->get_option( 'propp_dnsbl_check' ) );
+		$this->validator->set_block_dnsbl( 1 === (int) $this->get_option( 'propp_block_dnsbl' ) );
 
 		// Load AJAX Handlers (frontend .propp-phone + WP Admin live test).
 		require_once dirname( __FILE__ ) . '/AJAX/class-prop-ajax-handler.php';
@@ -129,9 +131,12 @@ class PROP_Plugin {
 
 		$opts = $this->get_options();
 
-		// WooCommerce Integration (Classic Checkout, Block Checkout, HPOS Meta, COD WhatsApp Guard).
+		// WooCommerce Integration (Classic Checkout, Block Checkout, HPOS Meta, COD WhatsApp Guard, Caller ID, GeoIP, Auto-Hold).
 		$wc_active_checks = ( 1 === (int) $this->get_option( 'propp_auto_check' ) )
 			|| ( 'off' !== (string) $this->get_option( 'propp_wc_whatsapp_mode' ) && '' !== (string) $this->get_option( 'propp_wc_whatsapp_mode' ) )
+			|| ( 'off' !== (string) $this->get_option( 'propp_wc_caller_id_mode' ) && '' !== (string) $this->get_option( 'propp_wc_caller_id_mode' ) )
+			|| ( 1 === (int) $this->get_option( 'propp_wc_ip_geo_check' ) )
+			|| ( 1 === (int) $this->get_option( 'propp_dnsbl_check' ) )
 			|| ( 1 === (int) $this->get_option( 'propp_whatsapp_check' ) )
 			|| ( 1 === (int) $this->get_option( 'propp_email_check' ) );
 
@@ -336,6 +341,11 @@ class PROP_Plugin {
 			'propp_wc_whatsapp_mode'   => 'off',
 			'propp_email_check'        => 0,
 			'propp_block_disposable'   => 1,
+			'propp_dnsbl_check'        => 0,
+			'propp_block_dnsbl'        => 0,
+			'propp_wc_caller_id_mode'  => 'off',
+			'propp_wc_ip_geo_check'    => 0,
+			'propp_wc_autohold_mode'   => 'off',
 			'propp_registration_check' => 0,
 			'propp_auto_check'         => 0,
 			'propp_elementor_check'    => 0,

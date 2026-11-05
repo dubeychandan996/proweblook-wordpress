@@ -81,6 +81,12 @@ class PROP_GravityForms {
 				$result['is_valid'] = false;
 				$result['message']  = $this->validator->get_error_message();
 			}
+		} elseif ( 'email' === $field_type && ! empty( $this->options['propp_dnsbl_check'] ) && ! empty( $this->options['propp_block_dnsbl'] ) ) {
+			$email = is_array( $value ) ? ( isset( $value[0] ) ? (string) $value[0] : '' ) : (string) $value;
+			if ( '' !== trim( $email ) && ! $this->validator->validate_domain_blacklist( $email, true, true ) ) {
+				$result['is_valid'] = false;
+				$result['message']  = $this->validator->get_error_message();
+			}
 		}
 
 		return $result;

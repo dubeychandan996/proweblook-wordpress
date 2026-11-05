@@ -18,6 +18,12 @@
 		if (bal.email !== null && bal.email !== undefined) {
 			$('#propp-bal-email').text(Number(bal.email).toLocaleString());
 		}
+		if (bal.caller !== null && bal.caller !== undefined) {
+			$('#propp-bal-caller').text(Number(bal.caller).toLocaleString());
+		}
+		if (bal.blacklist !== null && bal.blacklist !== undefined) {
+			$('#propp-bal-blacklist').text(Number(bal.blacklist).toLocaleString());
+		}
 	}
 
 	function renderResultCard(res) {
@@ -46,8 +52,15 @@
 
 		$('#propp-test-type').on('change', function () {
 			var type = $(this).val();
-			var placeholder = type === 'email' ? 'user@company.com' : '+14155552671';
-			$('#propp-phone').attr('placeholder', placeholder);
+			var placeholders = {
+				phone: '+14155552671',
+				whatsapp: '+919876543210',
+				caller_id: '+14155552671',
+				email: 'user@company.com',
+				dnsbl: 'stripe.com',
+				ip_geo: '8.8.8.8'
+			};
+			$('#propp-phone').attr('placeholder', placeholders[type] || '+14155552671');
 		});
 
 		$('#propp-button-validate').on('click', function (e) {

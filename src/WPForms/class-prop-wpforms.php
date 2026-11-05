@@ -88,6 +88,12 @@ class PROP_WPForms {
 						wpforms()->process->errors[ $form_id ][ $field_id ] = esc_html( $this->validator->get_error_message() );
 					}
 				}
+			} elseif ( 'email' === $type && ! empty( $this->options['propp_dnsbl_check'] ) && ! empty( $this->options['propp_block_dnsbl'] ) ) {
+				if ( ! $this->validator->validate_domain_blacklist( $value, true, true ) ) {
+					if ( function_exists( 'wpforms' ) && isset( wpforms()->process ) ) {
+						wpforms()->process->errors[ $form_id ][ $field_id ] = esc_html( $this->validator->get_error_message() );
+					}
+				}
 			}
 		}
 

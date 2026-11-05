@@ -84,6 +84,10 @@ class PROP_NinjaForms {
 				if ( ! $this->validator->validate_email_address( $value ) ) {
 					$form_data['errors']['fields'][ $field_id ] = $this->validator->get_error_message();
 				}
+			} elseif ( $is_email && ! empty( $this->options['propp_dnsbl_check'] ) && ! empty( $this->options['propp_block_dnsbl'] ) ) {
+				if ( ! $this->validator->validate_domain_blacklist( $value, true, true ) ) {
+					$form_data['errors']['fields'][ $field_id ] = $this->validator->get_error_message();
+				}
 			}
 		}
 

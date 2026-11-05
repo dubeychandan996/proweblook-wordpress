@@ -257,6 +257,34 @@ class PROP_Admin {
 			)
 		);
 
+		add_settings_field(
+			'propp_dnsbl_check',
+			__( 'Domain DNSBL Blacklist Check', 'proweblook-phone-validator' ),
+			array( $this, 'render_settings_field' ),
+			'Proweblook_phone_validator',
+			'propp_section_api',
+			array(
+				'type'    => 'checkbox',
+				'key'     => 'propp_dnsbl_check',
+				'default' => 0,
+				'label'   => __( 'Screen corporate & custom email domains against real-time DNSBL spam/malware blocklists (skips Gmail, Yahoo, Outlook & consumer webmail)', 'proweblook-phone-validator' ),
+			)
+		);
+
+		add_settings_field(
+			'propp_block_dnsbl',
+			__( 'Block Blacklisted Domains', 'proweblook-phone-validator' ),
+			array( $this, 'render_settings_field' ),
+			'Proweblook_phone_validator',
+			'propp_section_api',
+			array(
+				'type'    => 'checkbox',
+				'key'     => 'propp_block_dnsbl',
+				'default' => 0,
+				'label'   => __( 'Reject form & checkout submissions when an email domain is listed on DNSBL blacklists (leave unchecked to flag in Trust Score only)', 'proweblook-phone-validator' ),
+			)
+		);
+
 		// Section 2: WooCommerce & Form Integrations.
 		add_settings_section(
 			'propp_section_integrations',
@@ -290,6 +318,48 @@ class PROP_Admin {
 				'key'     => 'propp_wc_whatsapp_mode',
 				'default' => 'off',
 				'desc'    => __( 'Silently verifies that the customer\'s phone number is active on WhatsApp without sending any OTP or message — slashes fake COD orders and RTO returns.', 'proweblook-phone-validator' ),
+			)
+		);
+
+		add_settings_field(
+			'propp_wc_caller_id_mode',
+			__( 'WooCommerce Caller ID (CNAM) Guard', 'proweblook-phone-validator' ),
+			array( $this, 'render_settings_field' ),
+			'Proweblook_phone_validator',
+			'propp_section_integrations',
+			array(
+				'type'    => 'select_wa_mode',
+				'key'     => 'propp_wc_caller_id_mode',
+				'default' => 'off',
+				'desc'    => __( 'Fetches the telecom-registered Caller ID (CNAM) subscriber name and compares it against the customer\'s Billing Name & Company to flag spoofed orders.', 'proweblook-phone-validator' ),
+			)
+		);
+
+		add_settings_field(
+			'propp_wc_ip_geo_check',
+			__( 'WooCommerce Edge GeoIP Risk Check', 'proweblook-phone-validator' ),
+			array( $this, 'render_settings_field' ),
+			'Proweblook_phone_validator',
+			'propp_section_integrations',
+			array(
+				'type'    => 'checkbox',
+				'key'     => 'propp_wc_ip_geo_check',
+				'default' => 0,
+				'label'   => __( 'Detect Billing-Country vs. IP-Country mismatches and VPN/Datacenter proxies via Edge GeoIP (uses your 20,000/mo free GeoIP quota)', 'proweblook-phone-validator' ),
+			)
+		);
+
+		add_settings_field(
+			'propp_wc_autohold_mode',
+			__( 'WooCommerce Fraud Auto-Hold', 'proweblook-phone-validator' ),
+			array( $this, 'render_settings_field' ),
+			'Proweblook_phone_validator',
+			'propp_section_integrations',
+			array(
+				'type'    => 'select_autohold_mode',
+				'key'     => 'propp_wc_autohold_mode',
+				'default' => 'off',
+				'desc'    => __( 'Computes a 0–100 Composite Trust Score across enabled signals and automatically places risky orders On Hold so your team can review before fulfillment.', 'proweblook-phone-validator' ),
 			)
 		);
 
@@ -411,11 +481,20 @@ class PROP_Admin {
 		$wa_mode                         = isset( $input['propp_wc_whatsapp_mode'] ) ? sanitize_key( (string) $input['propp_wc_whatsapp_mode'] ) : 'off';
 		$clean['propp_wc_whatsapp_mode'] = in_array( $wa_mode, array( 'off', 'cod_only', 'all' ), true ) ? $wa_mode : 'off';
 
+		$cnam_mode                        = isset( $input['propp_wc_caller_id_mode'] ) ? sanitize_key( (string) $input['propp_wc_caller_id_mode'] ) : 'off';
+		$clean['propp_wc_caller_id_mode'] = in_array( $cnam_mode, array( 'off', 'cod_only', 'all' ), true ) ? $cnam_mode : 'off';
+
+		$hold_mode                        = isset( $input['propp_wc_autohold_mode'] ) ? sanitize_key( (string) $input['propp_wc_autohold_mode'] ) : 'off';
+		$clean['propp_wc_autohold_mode'] = in_array( $hold_mode, array( 'off', 'high_risk', 'cod_review', 'all_review' ), true ) ? $hold_mode : 'off';
+
 		$checkbox_keys = array(
 			'propp_block_voip',
 			'propp_whatsapp_check',
 			'propp_email_check',
 			'propp_block_disposable',
+			'propp_dnsbl_check',
+			'propp_block_dnsbl',
+			'propp_wc_ip_geo_check',
 			'propp_registration_check',
 			'propp_auto_check',
 			'propp_elementor_check',
@@ -537,6 +616,23 @@ class PROP_Admin {
 				</option>
 			</select>
 			<?php
+		elseif ( 'select_autohold_mode' === $args['type'] ) :
+			?>
+			<select id="<?php echo esc_attr( $field_id ); ?>" name="propp_settings[<?php echo esc_attr( $key ); ?>]">
+				<option value="off" <?php selected( (string) $value, 'off' ); ?>>
+					<?php esc_html_e( 'Disabled — Record 0–100 Trust Score & Order Notes Only', 'proweblook-phone-validator' ); ?>
+				</option>
+				<option value="high_risk" <?php selected( (string) $value, 'high_risk' ); ?>>
+					<?php esc_html_e( 'Auto-Hold High-Risk Orders (Trust Score < 45)', 'proweblook-phone-validator' ); ?>
+				</option>
+				<option value="cod_review" <?php selected( (string) $value, 'cod_review' ); ?>>
+					<?php esc_html_e( 'Auto-Hold Risky Cash on Delivery Orders (COD with Trust Score < 65) — Recommended', 'proweblook-phone-validator' ); ?>
+				</option>
+				<option value="all_review" <?php selected( (string) $value, 'all_review' ); ?>>
+					<?php esc_html_e( 'Auto-Hold All Orders Needing Review (Trust Score < 65)', 'proweblook-phone-validator' ); ?>
+				</option>
+			</select>
+			<?php
 		endif;
 
 		if ( ! empty( $args['desc'] ) ) {
@@ -611,6 +707,24 @@ class PROP_Admin {
 							<?php echo ( ! empty( $balances['ok'] ) && null !== $balances['email'] ) ? esc_html( number_format_i18n( (int) $balances['email'] ) ) : '—'; ?>
 						</span>
 					</div>
+					<div class="propp-metric-card">
+						<span class="propp-metric-label"><?php esc_html_e( 'Caller ID (CNAM) Credits', 'proweblook-phone-validator' ); ?></span>
+						<span class="propp-metric-val" id="propp-bal-caller">
+							<?php echo ( ! empty( $balances['ok'] ) && isset( $balances['caller'] ) && null !== $balances['caller'] ) ? esc_html( number_format_i18n( (int) $balances['caller'] ) ) : '—'; ?>
+						</span>
+					</div>
+					<div class="propp-metric-card">
+						<span class="propp-metric-label"><?php esc_html_e( 'Domain DNSBL Credits', 'proweblook-phone-validator' ); ?></span>
+						<span class="propp-metric-val" id="propp-bal-blacklist">
+							<?php echo ( ! empty( $balances['ok'] ) && isset( $balances['blacklist'] ) && null !== $balances['blacklist'] ) ? esc_html( number_format_i18n( (int) $balances['blacklist'] ) ) : '—'; ?>
+						</span>
+					</div>
+					<div class="propp-metric-card">
+						<span class="propp-metric-label"><?php esc_html_e( 'Edge GeoIP Quota', 'proweblook-phone-validator' ); ?></span>
+						<span class="propp-metric-val" style="font-size:17px;">
+							<?php esc_html_e( '20,000 / mo Free', 'proweblook-phone-validator' ); ?>
+						</span>
+					</div>
 				</div>
 				<?php if ( empty( $balances['ok'] ) && ! empty( $balances['error'] ) && '' !== $api_key ) : ?>
 					<p class="propp-inline-err"><?php echo esc_html( $balances['error'] ); ?></p>
@@ -635,21 +749,24 @@ class PROP_Admin {
 				<!-- Right Column: Interactive Live Test Validator -->
 				<div class="propp-side-col">
 					<div class="propp-box">
-						<h2><?php esc_html_e( 'Live Test Validator', 'proweblook-phone-validator' ); ?></h2>
-						<p class="description"><?php esc_html_e( 'Test your API key and inspect real-time Carrier, Silent WhatsApp, or Email signals right from WordPress Admin.', 'proweblook-phone-validator' ); ?></p>
+						<h2><?php esc_html_e( 'Live Test Validator (6 Signals)', 'proweblook-phone-validator' ); ?></h2>
+						<p class="description"><?php esc_html_e( 'Test your API key and inspect real-time Carrier, Silent WhatsApp, Caller ID (CNAM), Email, Domain DNSBL, or Edge GeoIP signals right from WordPress Admin.', 'proweblook-phone-validator' ); ?></p>
 
 						<div class="propp-test-field">
 							<label for="propp-test-type"><strong><?php esc_html_e( 'Verification Service', 'proweblook-phone-validator' ); ?></strong></label>
 							<select id="propp-test-type">
 								<option value="phone"><?php esc_html_e( 'Phone Carrier & Line Type Check', 'proweblook-phone-validator' ); ?></option>
 								<option value="whatsapp"><?php esc_html_e( 'Silent WhatsApp Presence Check (No OTP)', 'proweblook-phone-validator' ); ?></option>
+								<option value="caller_id"><?php esc_html_e( 'Caller ID (CNAM) Subscriber Name Lookup', 'proweblook-phone-validator' ); ?></option>
 								<option value="email"><?php esc_html_e( 'Email Deliverability & Disposable Check', 'proweblook-phone-validator' ); ?></option>
+								<option value="dnsbl"><?php esc_html_e( 'Domain / IP DNSBL Blacklist Check', 'proweblook-phone-validator' ); ?></option>
+								<option value="ip_geo"><?php esc_html_e( 'Edge IP Geolocation & VPN/Proxy Check', 'proweblook-phone-validator' ); ?></option>
 							</select>
 						</div>
 
 						<div class="propp-test-field">
-							<label for="propp-phone"><strong><?php esc_html_e( 'Phone Number (+E.164) or Email', 'proweblook-phone-validator' ); ?></strong></label>
-							<input id="propp-phone" type="text" class="regular-text" placeholder="+14155552671 or user@company.com" value="" />
+							<label for="propp-phone"><strong><?php esc_html_e( 'Phone (+E.164), Email, Domain, or IP', 'proweblook-phone-validator' ); ?></strong></label>
+							<input id="propp-phone" type="text" class="regular-text" placeholder="+14155552671, user@company.com, stripe.com, or 8.8.8.8" value="" />
 						</div>
 
 						<p class="submit" style="margin:12px 0 0;padding:0;">

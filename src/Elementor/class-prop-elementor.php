@@ -45,7 +45,7 @@ class PROP_Elementor {
 	 */
 	public function setup() {
 		add_action( 'elementor_pro/forms/validation/tel', array( $this, 'validate_tel' ), 10, 3 );
-		if ( ! empty( $this->options['propp_email_check'] ) ) {
+		if ( ! empty( $this->options['propp_email_check'] ) || ( ! empty( $this->options['propp_dnsbl_check'] ) && ! empty( $this->options['propp_block_dnsbl'] ) ) ) {
 			add_action( 'elementor_pro/forms/validation/email', array( $this, 'validate_email' ), 10, 3 );
 		}
 	}
@@ -89,7 +89,11 @@ class PROP_Elementor {
 			return;
 		}
 
-		if ( ! $this->validator->validate_email_address( $value ) ) {
+		if ( ! empty( $this->options['propp_email_check'] ) || empty( $this->options['propp_dnsbl_check'] ) ) {
+			if ( ! $this->validator->validate_email_address( $value ) ) {
+				$ajax_handler->add_error( $field['id'], $this->validator->get_error_message() );
+			}
+		} elseif ( ! $this->validator->validate_domain_blacklist( $value, ! empty( $this->options['propp_block_dnsbl'] ), true ) ) {
 			$ajax_handler->add_error( $field['id'], $this->validator->get_error_message() );
 		}
 	}

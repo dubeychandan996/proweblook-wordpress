@@ -47,7 +47,7 @@ class PROP_ContactForm7 {
 		add_filter( 'wpcf7_validate_tel', array( $this, 'validate_tel_tag' ), 20, 2 );
 		add_filter( 'wpcf7_validate_tel*', array( $this, 'validate_tel_tag' ), 20, 2 );
 
-		if ( ! empty( $this->options['propp_email_check'] ) ) {
+		if ( ! empty( $this->options['propp_email_check'] ) || ( ! empty( $this->options['propp_dnsbl_check'] ) && ! empty( $this->options['propp_block_dnsbl'] ) ) ) {
 			add_filter( 'wpcf7_validate_email', array( $this, 'validate_email_tag' ), 20, 2 );
 			add_filter( 'wpcf7_validate_email*', array( $this, 'validate_email_tag' ), 20, 2 );
 		}
@@ -125,7 +125,11 @@ class PROP_ContactForm7 {
 			return $result;
 		}
 
-		if ( ! $this->validator->validate_email_address( $value ) ) {
+		if ( ! empty( $this->options['propp_email_check'] ) || empty( $this->options['propp_dnsbl_check'] ) ) {
+			if ( ! $this->validator->validate_email_address( $value ) ) {
+				$result->invalidate( $tag, $this->validator->get_error_message() );
+			}
+		} elseif ( ! $this->validator->validate_domain_blacklist( $value, ! empty( $this->options['propp_block_dnsbl'] ), true ) ) {
 			$result->invalidate( $tag, $this->validator->get_error_message() );
 		}
 

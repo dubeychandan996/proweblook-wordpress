@@ -36,6 +36,27 @@ class PROP_API {
 	protected $email_endpoint = 'https://lookup.proweblook.com/api/v1/emailvalidation';
 
 	/**
+	 * Caller ID (CNAM) validation endpoint.
+	 *
+	 * @var string
+	 */
+	protected $caller_id_endpoint = 'https://lookup.proweblook.com/api/v1/calleridvalidation';
+
+	/**
+	 * Domain / IP DNSBL Blacklist checker endpoint.
+	 *
+	 * @var string
+	 */
+	protected $blacklist_endpoint = 'https://lookup.proweblook.com/api/v1/blacklistchecker';
+
+	/**
+	 * Edge IP Geolocation endpoint (20,000/mo free quota).
+	 *
+	 * @var string
+	 */
+	protected $ip_geo_endpoint = 'https://ipapi.proweblook.com/';
+
+	/**
 	 * Unified balance endpoint.
 	 *
 	 * @var string
@@ -429,6 +450,454 @@ class PROP_API {
 	}
 
 	/**
+	 * Lookup registered Caller ID (CNAM) subscriber name & carrier metadata.
+	 *
+	 * @param string $phone        Phone number in E.164 or local format.
+	 * @param string $country_code Optional 2-letter ISO country code hint.
+	 * @return object Normalized Caller ID lookup result.
+	 */
+	public function lookup_caller_id( $phone, $country_code = '' ) {
+		$api_key          = trim( (string) $this->get_apikey() );
+		$normalized_phone = $this->normalize_phone_string( $phone );
+		$resolved_country = ! empty( $country_code ) ? strtoupper( trim( (string) $country_code ) ) : strtoupper( trim( (string) $this->get_country_code() ) );
+
+		if ( 0 === strpos( $normalized_phone, '+' ) ) {
+			$resolved_country = '';
+		}
+
+		if ( '' === $api_key || '' === $normalized_phone ) {
+			return (object) array(
+				'ok'            => false,
+				'network_error' => true,
+				'error'         => 'Missing API key or phone number.',
+			);
+		}
+
+		$cache_key = $this->build_cache_key( 'callerid', $normalized_phone . '|' . $resolved_country );
+		$cached    = $this->get_cached( $cache_key );
+		if ( is_array( $cached ) ) {
+			return (object) $cached;
+		}
+
+		$query_args = array(
+			'api_key'      => $api_key,
+			'phone_number' => $normalized_phone,
+		);
+		if ( ! empty( $resolved_country ) && '0' !== $resolved_country ) {
+			$query_args['country_code'] = $resolved_country;
+		}
+
+		$url    = add_query_arg( rawurlencode_deep( $query_args ), $this->caller_id_endpoint );
+		$result = wp_remote_get(
+			$url,
+			array(
+				'timeout'    => $this->get_timeout(),
+				'user-agent' => $this->get_user_agent(),
+				'headers'    => array(
+					'Accept'    => 'application/json',
+					'X-API-KEY' => $api_key,
+				),
+			)
+		);
+
+		if ( is_wp_error( $result ) ) {
+			return (object) array(
+				'ok'            => false,
+				'network_error' => true,
+				'error'         => $result->get_error_message(),
+			);
+		}
+
+		$http_code = (int) wp_remote_retrieve_response_code( $result );
+		$decoded   = json_decode( wp_remote_retrieve_body( $result ), true );
+
+		if ( 401 === $http_code || 403 === $http_code ) {
+			update_option( 'prop-api-key-invalid', 1 );
+			return (object) array(
+				'ok'            => false,
+				'network_error' => true,
+				'auth_error'    => true,
+				'http_code'     => $http_code,
+				'error'         => isset( $decoded['error'] ) ? (string) $decoded['error'] : 'Invalid API key.',
+			);
+		}
+
+		if ( 402 === $http_code ) {
+			return (object) array(
+				'ok'            => false,
+				'network_error' => true,
+				'credit_error'  => true,
+				'http_code'     => $http_code,
+				'error'         => isset( $decoded['error'] ) ? (string) $decoded['error'] : 'Insufficient Caller ID API credits.',
+			);
+		}
+
+		if ( $http_code < 200 || $http_code >= 300 || ! is_array( $decoded ) ) {
+			return (object) array(
+				'ok'            => false,
+				'network_error' => true,
+				'http_code'     => $http_code,
+				'error'         => isset( $decoded['error'] ) ? (string) $decoded['error'] : 'Caller ID service unavailable.',
+			);
+		}
+
+		$payload = ( isset( $decoded['data'] ) && is_array( $decoded['data'] ) ) ? $decoded['data'] : $decoded;
+		if ( isset( $payload['status'] ) && false === $payload['status'] && ! isset( $payload['caller_name'] ) && ! isset( $payload['name'] ) ) {
+			return (object) array(
+				'ok'            => false,
+				'network_error' => true,
+				'error'         => isset( $payload['error'] ) ? (string) $payload['error'] : 'Caller ID lookup inconclusive.',
+			);
+		}
+
+		$caller_name = '';
+		if ( ! empty( $payload['caller_name'] ) ) {
+			$caller_name = trim( (string) $payload['caller_name'] );
+		} elseif ( ! empty( $payload['name'] ) ) {
+			$caller_name = trim( (string) $payload['name'] );
+		}
+
+		$normalized = array(
+			'ok'           => true,
+			'network_error'=> false,
+			'found'        => ( '' !== $caller_name ),
+			'caller_name'  => $caller_name,
+			'caller_type'  => isset( $payload['caller_type'] ) ? (string) $payload['caller_type'] : '',
+			'carrier'      => isset( $payload['carrier'] ) ? (string) $payload['carrier'] : '',
+			'linetype'     => isset( $payload['linetype'] ) ? (string) $payload['linetype'] : ( isset( $payload['line_type'] ) ? (string) $payload['line_type'] : '' ),
+			'countrycode'  => isset( $payload['countrycode'] ) ? (string) $payload['countrycode'] : $resolved_country,
+			'location'     => isset( $payload['location'] ) ? (string) $payload['location'] : '',
+			'phone_number' => $normalized_phone,
+		);
+
+		$this->set_cached( $cache_key, $normalized );
+		return (object) $normalized;
+	}
+
+	/**
+	 * Lookup shopper IP geolocation & datacenter/VPN/hosting signals via Edge GeoIP (`ipapi.proweblook.com`).
+	 * Automatically skips private/loopback/reserved IPs on local development servers.
+	 *
+	 * @param string $ip IPv4 or IPv6 address.
+	 * @return object Normalized IP Geo result.
+	 */
+	public function lookup_ip_geo( $ip ) {
+		$api_key  = trim( (string) $this->get_apikey() );
+		$clean_ip = trim( (string) $ip );
+
+		if ( '' === $api_key || '' === $clean_ip ) {
+			return (object) array(
+				'ok'            => false,
+				'network_error' => true,
+				'error'         => 'Missing API key or IP address.',
+			);
+		}
+
+		if ( false === filter_var( $clean_ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE ) ) {
+			return (object) array(
+				'ok'              => false,
+				'network_error'   => true,
+				'skipped_private' => true,
+				'error'           => 'Private, loopback, or reserved IP address skipped.',
+			);
+		}
+
+		$cache_key = $this->build_cache_key( 'ipgeo', $clean_ip );
+		$cached    = $this->get_cached( $cache_key );
+		if ( is_array( $cached ) ) {
+			return (object) $cached;
+		}
+
+		$url    = add_query_arg(
+			rawurlencode_deep(
+				array(
+					'api_key' => $api_key,
+					'ip'      => $clean_ip,
+				)
+			),
+			$this->ip_geo_endpoint
+		);
+		$result = wp_remote_get(
+			$url,
+			array(
+				'timeout'    => min( 8, $this->get_timeout() ),
+				'user-agent' => $this->get_user_agent(),
+				'headers'    => array(
+					'Accept' => 'application/json',
+				),
+			)
+		);
+
+		if ( is_wp_error( $result ) ) {
+			return (object) array(
+				'ok'            => false,
+				'network_error' => true,
+				'error'         => $result->get_error_message(),
+			);
+		}
+
+		$http_code = (int) wp_remote_retrieve_response_code( $result );
+		$decoded   = json_decode( wp_remote_retrieve_body( $result ), true );
+
+		if ( $http_code < 200 || $http_code >= 300 || ! is_array( $decoded ) ) {
+			return (object) array(
+				'ok'            => false,
+				'network_error' => true,
+				'http_code'     => $http_code,
+				'error'         => isset( $decoded['error'] ) ? (string) $decoded['error'] : 'Edge GeoIP lookup unavailable.',
+			);
+		}
+
+		$payload = ( isset( $decoded['data'] ) && is_array( $decoded['data'] ) ) ? $decoded['data'] : $decoded;
+		if ( isset( $payload['status'] ) && false === $payload['status'] ) {
+			return (object) array(
+				'ok'            => false,
+				'network_error' => true,
+				'error'         => isset( $payload['error'] ) ? (string) $payload['error'] : 'Edge GeoIP lookup failed.',
+			);
+		}
+
+		$raw_cc = '';
+		if ( ! empty( $payload['country_code'] ) ) {
+			$raw_cc = (string) $payload['country_code'];
+		} elseif ( ! empty( $payload['countryCode'] ) ) {
+			$raw_cc = (string) $payload['countryCode'];
+		} elseif ( ! empty( $payload['country'] ) && 2 === strlen( trim( (string) $payload['country'] ) ) ) {
+			$raw_cc = (string) $payload['country'];
+		}
+		$country_code = strtoupper( substr( trim( $raw_cc ), 0, 2 ) );
+		if ( ! preg_match( '/^[A-Z]{2}$/', $country_code ) ) {
+			$country_code = '';
+		}
+
+		$isp = '';
+		if ( ! empty( $payload['isp'] ) ) {
+			$isp = (string) $payload['isp'];
+		} elseif ( ! empty( $payload['org'] ) ) {
+			$isp = (string) $payload['org'];
+		} elseif ( ! empty( $payload['as_org'] ) ) {
+			$isp = (string) $payload['as_org'];
+		}
+
+		$asn          = isset( $payload['asn'] ) ? (string) $payload['asn'] : ( isset( $payload['as'] ) ? (string) $payload['as'] : '' );
+		$combined_org = strtolower( $isp . ' ' . $asn );
+
+		$proxy_keywords = array(
+			'amazonaws',
+			'amazon.com',
+			'digitalocean',
+			'google cloud',
+			'linode',
+			'akamai',
+			'hetzner',
+			'ovh',
+			'vultr',
+			'choopa',
+			'm247',
+			'datacamp',
+			'tzulo',
+			'leaseweb',
+			'contabo',
+			'scaleway',
+			'nordvpn',
+			'expressvpn',
+			'surfshark',
+			'protonvpn',
+			'mullvad',
+			'tor exit',
+			'datacenter',
+			'hosting',
+			'vps',
+			'proxy',
+		);
+
+		$is_hosting_or_proxy = ! empty( $payload['proxy'] ) || ! empty( $payload['hosting'] ) || ! empty( $payload['vpn'] );
+		if ( ! $is_hosting_or_proxy && '' !== trim( $combined_org ) ) {
+			foreach ( $proxy_keywords as $kw ) {
+				if ( false !== strpos( $combined_org, $kw ) ) {
+					$is_hosting_or_proxy = true;
+					break;
+				}
+			}
+		}
+
+		$normalized = array(
+			'ok'                  => true,
+			'network_error'       => false,
+			'ip'                  => isset( $payload['ip'] ) ? (string) $payload['ip'] : $clean_ip,
+			'country_code'        => $country_code,
+			'country_name'        => isset( $payload['country_name'] ) ? (string) $payload['country_name'] : ( isset( $payload['country'] ) ? (string) $payload['country'] : '' ),
+			'region'              => isset( $payload['region'] ) ? (string) $payload['region'] : ( isset( $payload['region_name'] ) ? (string) $payload['region_name'] : '' ),
+			'city'                => isset( $payload['city'] ) ? (string) $payload['city'] : '',
+			'isp'                 => $isp,
+			'asn'                 => $asn,
+			'timezone'            => isset( $payload['timezone'] ) ? (string) $payload['timezone'] : '',
+			'is_hosting_or_proxy' => $is_hosting_or_proxy,
+		);
+
+		$this->set_cached( $cache_key, $normalized );
+		return (object) $normalized;
+	}
+
+	/**
+	 * Check a domain or IP address against real-time DNSBL/RBL spam & malware blacklists.
+	 *
+	 * @param string $target      Domain name or IP address.
+	 * @param string $target_type One of `domain`, `ip`, `url`, `auto`.
+	 * @return object Normalized DNSBL blacklist lookup result.
+	 */
+	public function check_domain_blacklist( $target, $target_type = 'domain' ) {
+		$api_key      = trim( (string) $this->get_apikey() );
+		$clean_target = strtolower( trim( (string) $target ) );
+		$clean_type   = in_array( $target_type, array( 'domain', 'ip', 'url', 'auto' ), true ) ? $target_type : 'auto';
+
+		if ( '' === $api_key || '' === $clean_target ) {
+			return (object) array(
+				'ok'            => false,
+				'network_error' => true,
+				'error'         => 'Missing API key or target domain/IP.',
+			);
+		}
+
+		$cache_key = $this->build_cache_key( 'dnsbl', $clean_type . '|' . $clean_target );
+		$cached    = $this->get_cached( $cache_key );
+		if ( is_array( $cached ) ) {
+			return (object) $cached;
+		}
+
+		$url    = add_query_arg(
+			rawurlencode_deep(
+				array(
+					'api_key'     => $api_key,
+					'target'      => $clean_target,
+					'target_type' => $clean_type,
+				)
+			),
+			$this->blacklist_endpoint
+		);
+		$result = wp_remote_get(
+			$url,
+			array(
+				'timeout'    => $this->get_timeout(),
+				'user-agent' => $this->get_user_agent(),
+				'headers'    => array(
+					'Accept' => 'application/json',
+				),
+			)
+		);
+
+		if ( is_wp_error( $result ) ) {
+			return (object) array(
+				'ok'            => false,
+				'network_error' => true,
+				'error'         => $result->get_error_message(),
+			);
+		}
+
+		$http_code = (int) wp_remote_retrieve_response_code( $result );
+		$decoded   = json_decode( wp_remote_retrieve_body( $result ), true );
+
+		if ( 401 === $http_code || 403 === $http_code ) {
+			update_option( 'prop-api-key-invalid', 1 );
+			return (object) array(
+				'ok'            => false,
+				'network_error' => true,
+				'auth_error'    => true,
+				'http_code'     => $http_code,
+				'error'         => isset( $decoded['error'] ) ? (string) $decoded['error'] : 'Invalid API key.',
+			);
+		}
+
+		if ( 402 === $http_code ) {
+			return (object) array(
+				'ok'            => false,
+				'network_error' => true,
+				'credit_error'  => true,
+				'http_code'     => $http_code,
+				'error'         => isset( $decoded['error'] ) ? (string) $decoded['error'] : 'Insufficient Blacklist API credits.',
+			);
+		}
+
+		if ( $http_code < 200 || $http_code >= 300 || ! is_array( $decoded ) ) {
+			return (object) array(
+				'ok'            => false,
+				'network_error' => true,
+				'http_code'     => $http_code,
+				'error'         => isset( $decoded['error'] ) ? (string) $decoded['error'] : 'DNSBL Blacklist service unavailable.',
+			);
+		}
+
+		$payload = ( isset( $decoded['data'] ) && is_array( $decoded['data'] ) ) ? $decoded['data'] : $decoded;
+		if ( isset( $payload['status'] ) && false === $payload['status'] ) {
+			return (object) array(
+				'ok'            => false,
+				'network_error' => true,
+				'error'         => isset( $payload['error'] ) ? (string) $payload['error'] : 'DNSBL lookup failed.',
+			);
+		}
+
+		$listed_count = 0;
+		if ( isset( $payload['listed_count'] ) ) {
+			$listed_count = (int) $payload['listed_count'];
+		} elseif ( isset( $payload['listedCount'] ) ) {
+			$listed_count = (int) $payload['listedCount'];
+		} elseif ( ! empty( $payload['listed'] ) ) {
+			$listed_count = 1;
+		}
+
+		$checked_count = isset( $payload['total_checked'] ) ? (int) $payload['total_checked'] : ( isset( $payload['sources_checked'] ) ? (int) $payload['sources_checked'] : 0 );
+
+		$normalized = array(
+			'ok'            => true,
+			'network_error' => false,
+			'target'        => $clean_target,
+			'listed'        => ( $listed_count > 0 || ! empty( $payload['listed'] ) ),
+			'listed_count'  => $listed_count,
+			'checked_count' => $checked_count,
+		);
+
+		$this->set_cached( $cache_key, $normalized );
+		return (object) $normalized;
+	}
+
+	/**
+	 * Determine whether a domain is a well-known consumer webmail provider so DNSBL
+	 * domain checks only run on custom/corporate domains and never waste merchant credits.
+	 *
+	 * @param string $domain Domain name.
+	 * @return bool
+	 */
+	public function is_free_webmail_domain( $domain ) {
+		$clean = strtolower( trim( (string) $domain ) );
+		$free  = array(
+			'gmail.com',
+			'googlemail.com',
+			'yahoo.com',
+			'yahoo.co.in',
+			'yahoo.co.uk',
+			'ymail.com',
+			'outlook.com',
+			'hotmail.com',
+			'live.com',
+			'msn.com',
+			'icloud.com',
+			'me.com',
+			'mac.com',
+			'aol.com',
+			'proton.me',
+			'protonmail.com',
+			'zoho.com',
+			'zohomail.in',
+			'gmx.com',
+			'yandex.com',
+			'mail.com',
+			'rediffmail.com',
+			'fastmail.com',
+		);
+		return in_array( $clean, $free, true );
+	}
+
+	/**
 	 * Fetch remaining credit balances across Phone, WhatsApp, and Email products.
 	 *
 	 * @param bool $force_refresh Skip transient cache when true.
@@ -478,6 +947,8 @@ class PROP_API {
 					'phone'         => isset( $d['phone']['amount'] ) ? (int) $d['phone']['amount'] : 0,
 					'whatsapp'      => isset( $d['whatsapp']['amount'] ) ? (int) $d['whatsapp']['amount'] : 0,
 					'email'         => isset( $d['email']['amount'] ) ? (int) $d['email']['amount'] : 0,
+					'caller'        => isset( $d['caller']['amount'] ) ? (int) $d['caller']['amount'] : null,
+					'blacklist'     => isset( $d['blacklist']['amount'] ) ? (int) $d['blacklist']['amount'] : null,
 				);
 				update_option( 'prop-api-key-invalid', 0 );
 				set_transient( $bal_cache_key, $out, 60 );
@@ -515,6 +986,8 @@ class PROP_API {
 					'phone'         => isset( $f_body['phonebalance'] ) ? (int) $f_body['phonebalance'] : ( isset( $f_body['phone_balance'] ) ? (int) $f_body['phone_balance'] : 0 ),
 					'whatsapp'      => isset( $f_body['wabalance'] ) ? (int) $f_body['wabalance'] : ( isset( $f_body['wa_balance'] ) ? (int) $f_body['wa_balance'] : 0 ),
 					'email'         => isset( $f_body['email_balance'] ) ? (int) $f_body['email_balance'] : null,
+					'caller'        => isset( $f_body['caller_balance'] ) ? (int) $f_body['caller_balance'] : null,
+					'blacklist'     => isset( $f_body['blacklist_balance'] ) ? (int) $f_body['blacklist_balance'] : null,
 				);
 				update_option( 'prop-api-key-invalid', 0 );
 				set_transient( $bal_cache_key, $out, 60 );

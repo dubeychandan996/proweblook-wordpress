@@ -249,6 +249,120 @@ class PROP_Ajax_Validate_Phone {
 			);
 		}
 
+		if ( 'caller_id' === $test_type ) {
+			$res      = $api->lookup_caller_id( $target, $country );
+			$balances = $api->get_balances( true );
+
+			if ( ! empty( $res->network_error ) || empty( $res->ok ) ) {
+				wp_send_json_error(
+					array(
+						'message' => isset( $res->error ) ? (string) $res->error : __( 'Caller ID lookup failed.', 'proweblook-phone-validator' ),
+					)
+				);
+			}
+
+			$found = ! empty( $res->found );
+			wp_send_json_success(
+				array(
+					'type'     => 'caller_id',
+					'is_valid' => $found,
+					'verdict'  => $found ? 'CNAM_FOUND' : 'NO_CNAM_RECORD',
+					'summary'  => $found
+						? sprintf(
+							/* translators: %s: registered subscriber name */
+							__( 'Registered Subscriber: %s', 'proweblook-phone-validator' ),
+							(string) $res->caller_name
+						)
+						: __( 'No registered CNAM name returned for this number', 'proweblook-phone-validator' ),
+					'details'  => array(
+						'Phone'           => isset( $res->phone_number ) ? (string) $res->phone_number : $target,
+						'Subscriber Name' => $found ? (string) $res->caller_name : '—',
+						'Caller Type'     => ! empty( $res->caller_type ) ? (string) $res->caller_type : '—',
+						'Carrier'         => ! empty( $res->carrier ) ? (string) $res->carrier : '—',
+						'Line Type'       => ! empty( $res->linetype ) ? (string) $res->linetype : '—',
+						'Country'         => ! empty( $res->countrycode ) ? (string) $res->countrycode : '—',
+					),
+					'balances' => $balances,
+				)
+			);
+		}
+
+		if ( 'dnsbl' === $test_type ) {
+			$clean_target = trim( (string) $target );
+			if ( false !== strpos( $clean_target, '@' ) ) {
+				$parts        = explode( '@', $clean_target );
+				$clean_target = trim( (string) end( $parts ) );
+			}
+			$target_kind = ( false !== filter_var( $clean_target, FILTER_VALIDATE_IP ) ) ? 'ip' : 'domain';
+			$res         = $api->check_domain_blacklist( $clean_target, $target_kind );
+			$balances    = $api->get_balances( true );
+
+			if ( ! empty( $res->network_error ) || empty( $res->ok ) ) {
+				wp_send_json_error(
+					array(
+						'message' => isset( $res->error ) ? (string) $res->error : __( 'DNSBL blacklist lookup failed.', 'proweblook-phone-validator' ),
+					)
+				);
+			}
+
+			$listed = ! empty( $res->listed );
+			wp_send_json_success(
+				array(
+					'type'     => 'dnsbl',
+					'is_valid' => ! $listed,
+					'verdict'  => $listed ? 'LISTED_ON_BLACKLIST' : 'CLEAN',
+					'summary'  => $listed
+						? sprintf(
+							/* translators: %d: blacklist count */
+							__( 'Listed on %d DNSBL spam/malware blocklist(s)', 'proweblook-phone-validator' ),
+							max( 1, (int) $res->listed_count )
+						)
+						: __( 'Clean — zero DNSBL spam/malware listings found', 'proweblook-phone-validator' ),
+					'details'  => array(
+						'Target'          => (string) $res->target,
+						'Status'          => $listed ? 'Listed (High Risk)' : 'Clean',
+						'Listed Count'    => (string) (int) $res->listed_count,
+						'Sources Checked' => ! empty( $res->checked_count ) ? (string) (int) $res->checked_count : '—',
+					),
+					'balances' => $balances,
+				)
+			);
+		}
+
+		if ( 'ip_geo' === $test_type ) {
+			$res      = $api->lookup_ip_geo( $target );
+			$balances = $api->get_balances( false );
+
+			if ( ! empty( $res->network_error ) || empty( $res->ok ) ) {
+				wp_send_json_error(
+					array(
+						'message' => isset( $res->error ) ? (string) $res->error : __( 'Edge GeoIP lookup failed.', 'proweblook-phone-validator' ),
+					)
+				);
+			}
+
+			$is_proxy = ! empty( $res->is_hosting_or_proxy );
+			wp_send_json_success(
+				array(
+					'type'     => 'ip_geo',
+					'is_valid' => ! $is_proxy,
+					'verdict'  => $is_proxy ? 'HOSTING_OR_VPN' : 'RESIDENTIAL_ISP',
+					'summary'  => $is_proxy
+						? __( 'VPN / Datacenter / Cloud Hosting network detected', 'proweblook-phone-validator' )
+						: __( 'Standard ISP network resolved cleanly', 'proweblook-phone-validator' ),
+					'details'  => array(
+						'IP Address' => (string) $res->ip,
+						'Country'    => ! empty( $res->country_name ) ? (string) $res->country_name . ' (' . (string) $res->country_code . ')' : ( ! empty( $res->country_code ) ? (string) $res->country_code : '—' ),
+						'City'       => ! empty( $res->city ) ? (string) $res->city : '—',
+						'ISP / Org'  => ! empty( $res->isp ) ? (string) $res->isp : '—',
+						'ASN'        => ! empty( $res->asn ) ? (string) $res->asn : '—',
+						'Network'    => $is_proxy ? 'Datacenter / VPN / Proxy' : 'Standard ISP',
+					),
+					'balances' => $balances,
+				)
+			);
+		}
+
 		wp_send_json_error( array( 'message' => __( 'Unknown test type.', 'proweblook-phone-validator' ) ) );
 	}
 
