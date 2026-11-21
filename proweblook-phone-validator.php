@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name:       ProWebLook Phone, WhatsApp & Email Validator — COD & Lead Guard
+ * Plugin Name:       ProWebLook Phone & Email Validator — COD & Lead Guard
  * Plugin URI:        https://proweblook.com/phone-number-validator
- * Description:       Real-time Phone Carrier, Silent WhatsApp COD RTO Guard, Caller ID (CNAM), Email Deliverability, Domain DNSBL & Edge GeoIP Fraud Protection for WooCommerce (Classic & Block Checkout + HPOS), Elementor, CF7, WPForms, Gravity Forms & Ninja Forms.
- * Version:           2.1.0
+ * Description:       Real-time Phone Carrier, Caller ID (CNAM), Email Deliverability, Domain DNSBL & Edge GeoIP Fraud Protection for WooCommerce (Classic & Block Checkout + HPOS), Elementor, CF7, WPForms, Gravity Forms & Ninja Forms.
+ * Version:           2.1.1
  * Requires at least: 5.8
  * Tested up to:      7.1
  * Requires PHP:      7.4
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
 }
 
-define( 'PROP_PLUGIN_CURRENT_VERSION', '2.1.0' );
+define( 'PROP_PLUGIN_CURRENT_VERSION', '2.1.1' );
 define( 'PROP_PLUGIN_FILE', __FILE__ );
 define( 'PROP_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
 define( 'PROP_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );

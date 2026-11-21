@@ -1,18 +1,18 @@
-=== ProWebLook Phone, WhatsApp & Email Validator — COD & Lead Guard ===
+=== ProWebLook Phone & Email Validator — COD & Lead Guard ===
 Contributors: proweblook
-Tags: phone validation, whatsapp, email verification, woocommerce, contact form 7
+Tags: phone validation, email verification, woocommerce, contact form 7, fraud prevention
 Requires at least: 5.8
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.1.0
+Stable tag: 2.1.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Validate phones, silent WhatsApp COD, emails, Caller ID & GeoIP fraud scores across WooCommerce, CF7, WPForms, Elementor & Gravity Forms.
+Validate phones, emails, Caller ID & GeoIP fraud scores across WooCommerce, CF7, WPForms, Elementor & Gravity Forms.
 
 == Description ==
 
-**ProWebLook Phone, WhatsApp & Email Validator — COD & Lead Guard** protects your WooCommerce store and WordPress lead forms from fake phone numbers, burner VoIP lines, disposable 10-minute emails, blacklisted spam domains, impersonated Caller IDs, VPN/country-mismatched checkouts, and costly Cash-on-Delivery (COD) Return-to-Origin (RTO) losses.
+**ProWebLook Phone & Email Validator — COD & Lead Guard** protects your WooCommerce store and WordPress lead forms from fake phone numbers, burner VoIP lines, disposable 10-minute emails, blacklisted spam domains, impersonated Caller IDs, VPN/country-mismatched checkouts, and costly Cash-on-Delivery (COD) Return-to-Origin (RTO) losses.
 
 Powered by [ProWebLook](https://proweblook.com) real-time telecom, deliverability & edge intelligence APIs (`<200ms` global average response), every check happens **silently in the background** — no SMS OTP friction, no ringing phones, and zero lost conversions.
 
@@ -106,6 +106,9 @@ The plugin is engineered to **fail open** on network timeouts or depleted credit
 2. WooCommerce Checkout, HPOS Orders Trust Column & Order Details — Composite 0–100 Trust Score pills and Carrier / WhatsApp / Caller ID / Email / DNSBL / GeoIP Trust Signals attached to orders.
 
 == Changelog ==
+
+= 2.1.1 =
+* Updated plugin display name to **ProWebLook Phone & Email Validator — COD & Lead Guard** for compliance with WordPress.org Plugin Directory trademark naming guidelines (`GUIDELINES TRM`).
 
 = 2.1.0 =
 * Added **Caller ID (CNAM) Subscriber Name-Match Guard** (`lookup.proweblook.com/api/v1/calleridvalidation`) with local fuzzy name matching (`match`, `partial`, `mismatch`) against WooCommerce Billing Name & Company (`COD Only` or `All Checkouts`).
